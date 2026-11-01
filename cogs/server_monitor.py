@@ -48,12 +48,28 @@ class WDRconClient:
         return data.get("players") if data else None
 
     async def full_info(self) -> Optional[dict]:
-        """Статус + игроки. None = сервер недоступен."""
+        """Статус + текст ротации. None = сервер недоступен."""
         status = await self.status()
         if status is None:
             return None
-        players = await self.players() or []
-        return {**status, "playerList": players}
+
+        # Индексы ротации из статуса → названия карт из /v1/rotation
+        rot_idx  = status.get("rotation") or {}
+        rot      = await self._get("/v1/rotation") or {}
+        entries  = rot.get("entries", [])
+
+        def map_at(i) -> Optional[str]:
+            if isinstance(i, int) and 0 <= i < len(entries):
+                return entries[i].get("map")
+            return None
+
+        now_map  = map_at(rot_idx.get("nowIndex"))
+        next_map = map_at(rot_idx.get("nextIndex"))
+        rotation_text = None
+        if now_map or next_map:
+            rotation_text = f"сейчас **{now_map or '—'}** · следующая **{next_map or '—'}**"
+
+        return {**status, "rotationText": rotation_text}
 
 
 # ─────────────────────────────────────────────
@@ -93,6 +109,11 @@ MAP_INFO: dict[str, dict] = {
     },
 }
 
+# Ссылки на картинки карт (баннер в эмбеде). Пока пусто — картинка не выводится.
+# Пример: "Zestafona": "https://example.com/zestafona.png"
+MAP_IMAGE_URLS: dict[str, str] = {}
+
+
 def get_map_info(map_id: str) -> dict:
     """Ищет карту по точному совпадению или по вхождению подстроки."""
     if map_id in MAP_INFO:
@@ -126,44 +147,51 @@ def _faction_bar(factions: list[dict], max_score: int) -> str:
 
 def build_status_embed(server_name: str, data: Optional[dict]) -> discord.Embed:
     """Публичная панель. Без IP, порта, пароля и списка игроков."""
-    ts = f"<t:{int(datetime.now(timezone.utc).timestamp())}:R>"
+    now = datetime.now(timezone.utc)
 
     if data is None:
         embed = discord.Embed(
-            title=f"🔴 {server_name}",
+            title=f"📡 {server_name} — статус сервера",
             description="Сервер **недоступен** или не отвечает.",
             color=COLOR_OFFLINE,
+            timestamp=now,
         )
-        embed.set_footer(text=f"Обновлено {ts}")
+        embed.set_footer(text="Автосводка")
         return embed
 
     cur      = data.get("players", {}).get("current", 0)
     mx       = data.get("players", {}).get("max", 0)
     map_     = data.get("map", "—")
+    exps     = ", ".join(data.get("experiences", [])) or "—"
     lighting = data.get("lighting", "—")
 
-    minfo       = get_map_info(map_)
-    map_display = f"{minfo['emoji']} **{map_}**\n`{minfo['mode']}` · {minfo['region']}"
-    if minfo["desc"]:
-        map_display += f"\n*{minfo['desc']}*"
+    minfo = get_map_info(map_)
 
-    factions    = data.get("factionScores", [])
-    score_cap   = data.get("scoreCap", 0)
-    faction_str = _faction_bar(factions, score_cap)
+    factions = data.get("factionScores", [])
+    faction_str = "\n".join(
+        f"• **{f.get('name', '?')}** — {f.get('score', 0)}" for f in factions
+    ) or "—"
 
-    match_sec = data.get("matchSeconds", 0)
-    m, s = divmod(int(match_sec), 60)
-    h, m = divmod(m, 60)
-    time_str = f"{h:02d}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
+    rotation_text = data.get("rotationText") or "—"
 
-    embed = discord.Embed(title=f"🟢 {server_name}", color=COLOR_ONLINE)
-    embed.add_field(name="👥 Игроки",    value=f"**{cur} / {mx}**", inline=True)
-    embed.add_field(name="⏱️ Матч",      value=f"`{time_str}`",     inline=True)
-    embed.add_field(name="💡 Освещение", value=f"`{lighting}`",     inline=True)
-    embed.add_field(name="🗺️ Карта",     value=map_display,         inline=False)
-    if faction_str:
-        embed.add_field(name="⚔️ Счёт фракций", value=faction_str, inline=False)
-    embed.set_footer(text=f"Обновлено {ts}")
+    embed = discord.Embed(
+        title=f"📡 {server_name} — статус сервера",
+        description=f"*{minfo['region']}*" if minfo["region"] != "—" else None,
+        color=COLOR_ONLINE,
+        timestamp=now,
+    )
+    embed.add_field(name="Карта",        value=f"**{map_}**",    inline=True)
+    embed.add_field(name="Свет",         value=lighting,         inline=True)
+    embed.add_field(name="Игроки",       value=f"{cur}/{mx}",    inline=True)
+    embed.add_field(name="Режим",        value=exps,             inline=False)
+    embed.add_field(name="Счёт фракций", value=faction_str,      inline=False)
+    embed.add_field(name="Ротация",      value=rotation_text,    inline=False)
+
+    image_url = MAP_IMAGE_URLS.get(map_)
+    if image_url:
+        embed.set_image(url=image_url)
+
+    embed.set_footer(text="Автосводка")
     return embed
 
 
