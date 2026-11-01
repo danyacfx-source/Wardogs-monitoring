@@ -326,6 +326,7 @@ class ServerMonitor(commands.Cog):
         self._last_data: Optional[dict] = None
         self._status_message_id: Optional[int] = None
         self._prev_match: Optional[dict] = None   # снимок последнего опроса для итогов матча
+        self._panel_searched: bool = False        # искали ли уже панель в канале после старта
 
     # ── Жизненный цикл ───────────────────────────────────────────────────────
 
@@ -421,6 +422,11 @@ class ServerMonitor(commands.Cog):
         if channel is None:
             return
 
+        # После перезапуска ID панели неизвестен: ищем свою панель и редактируем её
+        if self._status_message_id is None and not self._panel_searched:
+            self._panel_searched = True
+            self._status_message_id = await self._find_existing_panel(channel)
+
         embed = build_status_embed(self.SERVER_NAME, data)
         file  = make_map_file(data.get("map") if data else None)
         files = [file] if file else []
@@ -439,6 +445,20 @@ class ServerMonitor(commands.Cog):
             self._status_message_id = msg.id
         except discord.HTTPException as e:
             log.error("[%s] Не удалось отправить панель: %s", self.SERVER_NAME, e)
+
+    async def _find_existing_panel(self, channel) -> Optional[int]:
+        """Ищет последнюю панель статуса этого сервера, отправленную ботом."""
+        try:
+            async for msg in channel.history(limit=100):
+                if msg.author.id != self.bot.user.id:
+                    continue
+                for e in msg.embeds:
+                    if e.title and e.title.endswith("— статус сервера") and self.SERVER_NAME in e.title:
+                        log.info("[%s] Найдена существующая панель: %s", self.SERVER_NAME, msg.id)
+                        return msg.id
+        except discord.HTTPException as e:
+            log.error("[%s] Не удалось поискать панель: %s", self.SERVER_NAME, e)
+        return None
 
     # ── Уведомления ──────────────────────────────────────────────────────────
 
