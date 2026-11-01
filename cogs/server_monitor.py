@@ -239,31 +239,6 @@ def build_alert_embed(server_name: str, went_online: bool, data: Optional[dict] 
     )
 
 
-class JoinView(discord.ui.View):
-    """Кнопка «Подключиться». Адрес виден только нажавшему, в ответе ephemeral."""
-
-    def __init__(self, cog: "ServerMonitor"):
-        super().__init__(timeout=None)   # persistent: работает и после перезапуска
-        self.cog = cog
-
-    @discord.ui.button(
-        label="Подключиться",
-        style=discord.ButtonStyle.success,
-        emoji="🎮",
-        custom_id="wardogs_join",
-    )
-    async def join(self, interaction: discord.Interaction, button: discord.ui.Button):
-        addr = self.cog.JOIN_ADDRESS
-        if not addr:
-            await interaction.response.send_message(
-                "Адрес подключения пока не настроен.", ephemeral=True
-            )
-            return
-        await interaction.response.send_message(
-            f"Подключиться: steam://connect/{addr}", ephemeral=True
-        )
-
-
 def _format_duration(total_sec: int) -> str:
     h, rem = divmod(int(total_sec), 3600)
     m, s = divmod(rem, 60)
@@ -341,7 +316,6 @@ class ServerMonitor(commands.Cog):
     ALERT_CHANNEL_ID  = 987654321098765432   # канал для уведомлений (или None)
 
     POLL_INTERVAL     = 30   # секунд между опросами
-    JOIN_ADDRESS      = ""   # адрес для кнопки «Подключиться», например "1.2.3.4:27015"
     # ─────────────────────────────────────────────────────────────────────────
 
     def __init__(self, bot: commands.Bot):
@@ -366,8 +340,6 @@ class ServerMonitor(commands.Cog):
         )
         self.poll_loop.change_interval(seconds=self.POLL_INTERVAL)
         self.poll_loop.start()
-        # Регистрируем persistent view, чтобы кнопка работала на старых сообщениях после перезапуска
-        self.bot.add_view(JoinView(self))
         log.info("[%s] ServerMonitor запущен", self.SERVER_NAME)
 
     async def cog_unload(self):
@@ -463,13 +435,13 @@ class ServerMonitor(commands.Cog):
             try:
                 msg = await channel.fetch_message(self._status_message_id)
                 # attachments=[] снимает старый баннер, если карта сменилась
-                await msg.edit(embed=embed, attachments=files, view=JoinView(self))
+                await msg.edit(embed=embed, attachments=files)
                 return
             except (discord.NotFound, discord.HTTPException):
                 self._status_message_id = None
 
         try:
-            msg = await channel.send(embed=embed, files=files, view=JoinView(self))
+            msg = await channel.send(embed=embed, files=files)
             self._status_message_id = msg.id
         except discord.HTTPException as e:
             log.error("[%s] Не удалось отправить панель: %s", self.SERVER_NAME, e)
@@ -509,7 +481,7 @@ class ServerMonitor(commands.Cog):
         data  = await self._client.full_info()
         embed = build_status_embed(self.SERVER_NAME, data)
         file  = make_map_file(data.get("map") if data else None)
-        await interaction.followup.send(embed=embed, files=[file] if file else [], view=JoinView(self))
+        await interaction.followup.send(embed=embed, files=[file] if file else [])
 
     @app_commands.command(name="players", description="Список игроков на сервере")
     async def cmd_players(self, interaction: discord.Interaction):
