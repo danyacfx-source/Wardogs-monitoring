@@ -253,18 +253,14 @@ class JoinView(discord.ui.View):
         custom_id="wardogs_join",
     )
     async def join(self, interaction: discord.Interaction, button: discord.ui.Button):
-        server_id = self.cog.JOIN_SERVER_ID
-        if not server_id:
+        addr = self.cog.JOIN_ADDRESS
+        if not addr:
             await interaction.response.send_message(
-                "ID сервера пока не настроен.", ephemeral=True
+                "Адрес подключения пока не настроен.", ephemeral=True
             )
             return
         await interaction.response.send_message(
-            "**Подключиться:**\n"
-            "1. Запусти Wardogs и открой **Community Servers**.\n"
-            "2. Вставь ID сервера:\n"
-            f"```{server_id}```",
-            ephemeral=True,
+            f"Подключиться: steam://connect/{addr}", ephemeral=True
         )
 
 
@@ -345,7 +341,7 @@ class ServerMonitor(commands.Cog):
     ALERT_CHANNEL_ID  = 987654321098765432   # канал для уведомлений (или None)
 
     POLL_INTERVAL     = 30   # секунд между опросами
-    JOIN_SERVER_ID    = ""     # ID сервера из Community Servers, для кнопки «Подключиться»
+    JOIN_ADDRESS      = ""   # адрес для кнопки «Подключиться», например "1.2.3.4:27015"
     # ─────────────────────────────────────────────────────────────────────────
 
     def __init__(self, bot: commands.Bot):
