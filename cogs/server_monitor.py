@@ -124,7 +124,8 @@ def _faction_bar(factions: list[dict], max_score: int) -> str:
     return "\n".join(parts)
 
 
-def build_status_embed(server_name: str, host: str, port: int, data: Optional[dict]) -> discord.Embed:
+def build_status_embed(server_name: str, data: Optional[dict]) -> discord.Embed:
+    """Публичная панель. Без IP, порта, пароля и списка игроков."""
     ts = f"<t:{int(datetime.now(timezone.utc).timestamp())}:R>"
 
     if data is None:
@@ -139,16 +140,15 @@ def build_status_embed(server_name: str, host: str, port: int, data: Optional[di
     cur      = data.get("players", {}).get("current", 0)
     mx       = data.get("players", {}).get("max", 0)
     map_     = data.get("map", "—")
-    exps     = ", ".join(data.get("experiences", [])) or "—"
     lighting = data.get("lighting", "—")
 
-    minfo    = get_map_info(map_)
+    minfo       = get_map_info(map_)
     map_display = f"{minfo['emoji']} **{map_}**\n`{minfo['mode']}` · {minfo['region']}"
     if minfo["desc"]:
         map_display += f"\n*{minfo['desc']}*"
 
-    factions  = data.get("factionScores", [])
-    score_cap = data.get("scoreCap", 0)
+    factions    = data.get("factionScores", [])
+    score_cap   = data.get("scoreCap", 0)
     faction_str = _faction_bar(factions, score_cap)
 
     match_sec = data.get("matchSeconds", 0)
@@ -156,32 +156,14 @@ def build_status_embed(server_name: str, host: str, port: int, data: Optional[di
     h, m = divmod(m, 60)
     time_str = f"{h:02d}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
 
-    player_list = data.get("playerList", [])
-    if player_list:
-        lines = [
-            f"`{p.get('name','?'):20s}` {p.get('faction','?'):12s}  "
-            f"{p.get('kills',0)}K/{p.get('deaths',0)}D  {p.get('pingMs',0)}ms"
-            for p in player_list[:20]
-        ]
-        if len(player_list) > 20:
-            lines.append(f"*… и ещё {len(player_list)-20} игрок(ов)*")
-        players_str = "```" + "\n".join(lines) + "```"
-    else:
-        players_str = "*Нет игроков*"
-
     embed = discord.Embed(title=f"🟢 {server_name}", color=COLOR_ONLINE)
     embed.add_field(name="👥 Игроки",    value=f"**{cur} / {mx}**", inline=True)
     embed.add_field(name="⏱️ Матч",      value=f"`{time_str}`",     inline=True)
     embed.add_field(name="💡 Освещение", value=f"`{lighting}`",     inline=True)
     embed.add_field(name="🗺️ Карта",     value=map_display,         inline=False)
-    if exps and exps != "—":
-        embed.add_field(name="⚙️ Вариант", value=f"`{exps}`",       inline=True)
-
     if faction_str:
         embed.add_field(name="⚔️ Счёт фракций", value=faction_str, inline=False)
-
-    embed.add_field(name=f"🎮 Онлайн ({cur})", value=players_str, inline=False)
-    embed.set_footer(text=f"Обновлено {ts}  •  {host}:{port}")
+    embed.set_footer(text=f"Обновлено {ts}")
     return embed
 
 
@@ -299,7 +281,7 @@ class ServerMonitor(commands.Cog):
         if channel is None:
             return
 
-        embed = build_status_embed(self.SERVER_NAME, self.SERVER_HOST, self.SERVER_PORT, data)
+        embed = build_status_embed(self.SERVER_NAME, data)
 
         if self._status_message_id:
             try:
@@ -334,7 +316,7 @@ class ServerMonitor(commands.Cog):
     async def cmd_status(self, interaction: discord.Interaction):
         await interaction.response.defer()
         data  = await self._client.full_info()
-        embed = build_status_embed(self.SERVER_NAME, self.SERVER_HOST, self.SERVER_PORT, data)
+        embed = build_status_embed(self.SERVER_NAME, data)
         await interaction.followup.send(embed=embed)
 
     @app_commands.command(name="players", description="Список игроков на сервере")
@@ -349,11 +331,13 @@ class ServerMonitor(commands.Cog):
             await interaction.followup.send("На сервере нет игроков.", ephemeral=True)
             return
 
+        # Только ник и фракция, без пинга, K/D и SteamID. Ответ виден только вызвавшему.
         lines = [
-            f"`{p.get('name','?'):20s}` {p.get('faction','?'):12s}  "
-            f"{p.get('kills',0)}K/{p.get('deaths',0)}D  {p.get('pingMs',0)}ms"
-            for p in players
+            f"{p.get('name', '?')[:20]:20s}  {p.get('faction', '?')}"
+            for p in players[:50]
         ]
+        if len(players) > 50:
+            lines.append(f"… и ещё {len(players) - 50}")
         embed = discord.Embed(
             title=f"👥 Игроки на {self.SERVER_NAME} ({len(players)})",
             description="```" + "\n".join(lines) + "```",
