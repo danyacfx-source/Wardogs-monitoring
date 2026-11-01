@@ -1,7 +1,7 @@
 services:
 
   wardogs-bot-1:
-    build: ./bot
+    build: .
     image: wardogs-monitor:latest
     container_name: wardogs-bot-1
     restart: unless-stopped
