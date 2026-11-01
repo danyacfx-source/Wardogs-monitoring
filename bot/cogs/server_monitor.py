@@ -57,6 +57,54 @@ class WDRconClient:
 
 
 # ─────────────────────────────────────────────
+#  Карты WARDOGS
+# ─────────────────────────────────────────────
+
+MAP_INFO: dict[str, dict] = {
+    "Bakurani": {
+        "emoji": "🏭",
+        "region": "Кавказ",
+        "mode": "King of the Hill",
+        "desc": "Речная долина с заводским районом и лесистыми хребтами по бокам.",
+    },
+    "Ozeti": {
+        "emoji": "⛪",
+        "region": "Европа",
+        "mode": "King of the Hill",
+        "desc": "Холмистый городок с футбольным стадионом, церковью на возвышенности и рекой на юге.",
+    },
+    "Zestafona": {
+        "emoji": "🌾",
+        "region": "Северная Америка",
+        "mode": "King of the Hill",
+        "desc": "Открытая местность: городок у изгиба реки, фермерские угодья и складские районы.",
+    },
+    "Jutari": {
+        "emoji": "🎯",
+        "region": "Кавказ (окраины Бакурани)",
+        "mode": "Sniper Showdown",
+        "desc": "Компактная арена для снайперских дуэлей.",
+    },
+    "Saburtulo": {
+        "emoji": "🔒",
+        "region": "Россия",
+        "mode": "King of the Hill",
+        "desc": "В разработке — карта ещё недоступна для игры.",
+    },
+}
+
+def get_map_info(map_id: str) -> dict:
+    """Ищет карту по точному совпадению или по вхождению подстроки."""
+    if map_id in MAP_INFO:
+        return MAP_INFO[map_id]
+    map_id_lower = map_id.lower()
+    for key, info in MAP_INFO.items():
+        if key.lower() in map_id_lower or map_id_lower in key.lower():
+            return info
+    return {"emoji": "🗺️", "region": "—", "mode": "—", "desc": ""}
+
+
+# ─────────────────────────────────────────────
 #  Embed-строители
 # ─────────────────────────────────────────────
 
@@ -94,6 +142,11 @@ def build_status_embed(server_name: str, host: str, port: int, data: Optional[di
     exps     = ", ".join(data.get("experiences", [])) or "—"
     lighting = data.get("lighting", "—")
 
+    minfo    = get_map_info(map_)
+    map_display = f"{minfo['emoji']} **{map_}**\n`{minfo['mode']}` · {minfo['region']}"
+    if minfo["desc"]:
+        map_display += f"\n*{minfo['desc']}*"
+
     factions  = data.get("factionScores", [])
     score_cap = data.get("scoreCap", 0)
     faction_str = _faction_bar(factions, score_cap)
@@ -118,11 +171,11 @@ def build_status_embed(server_name: str, host: str, port: int, data: Optional[di
 
     embed = discord.Embed(title=f"🟢 {server_name}", color=COLOR_ONLINE)
     embed.add_field(name="👥 Игроки",    value=f"**{cur} / {mx}**", inline=True)
-    embed.add_field(name="🗺️ Карта",     value=f"**{map_}**",       inline=True)
-    embed.add_field(name="⚙️ Режим",     value=f"`{exps}`",         inline=True)
-    embed.add_field(name="💡 Освещение", value=f"`{lighting}`",     inline=True)
     embed.add_field(name="⏱️ Матч",      value=f"`{time_str}`",     inline=True)
-    embed.add_field(name="​",       value="​",            inline=True)
+    embed.add_field(name="💡 Освещение", value=f"`{lighting}`",     inline=True)
+    embed.add_field(name="🗺️ Карта",     value=map_display,         inline=False)
+    if exps and exps != "—":
+        embed.add_field(name="⚙️ Вариант", value=f"`{exps}`",       inline=True)
 
     if faction_str:
         embed.add_field(name="⚔️ Счёт фракций", value=faction_str, inline=False)
