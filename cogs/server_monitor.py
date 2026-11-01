@@ -239,6 +239,63 @@ def build_alert_embed(server_name: str, went_online: bool, data: Optional[dict] 
     )
 
 
+def _format_duration(total_sec: int) -> str:
+    h, rem = divmod(int(total_sec), 3600)
+    m, s = divmod(rem, 60)
+    if h:
+        return f"{h}ч {m}м {s}с"
+    return f"{m}м {s}с"
+
+
+def match_snapshot(data: dict) -> dict:
+    """Снимок состояния матча, который сохраняем между опросами."""
+    return {
+        "map":          data.get("map", "—"),
+        "exps":         ", ".join(data.get("experiences", [])) or "—",
+        "lighting":     data.get("lighting", "—"),
+        "matchSeconds": int(data.get("matchSeconds", 0) or 0),
+        "players":      data.get("players", {}).get("current", 0),
+        "factions":     data.get("factionScores", []),
+    }
+
+
+def build_match_summary_embed(snap: dict) -> discord.Embed:
+    """Итоги завершённого матча по последнему снимку."""
+    factions = snap["factions"]
+    top_score = max((f.get("score", 0) for f in factions), default=0)
+    leaders = [f for f in factions if f.get("score", 0) == top_score and top_score > 0]
+    if len(leaders) == 1:
+        winner = leaders[0].get("name", "?")
+    elif leaders:
+        winner = "Ничья"
+    else:
+        winner = "—"
+
+    max_score = max(top_score, 1)
+    lines = []
+    for f in factions:
+        score = f.get("score", 0)
+        blocks = round(score / max_score * 10) if score > 0 else 0
+        blocks = max(blocks, 1) if score > 0 else 0
+        bar = "█" * blocks
+        lines.append(f"• **{f.get('name', '?')}** — {score} {bar}")
+
+    embed = discord.Embed(
+        title="🏁 Матч завершён",
+        color=WARDOGS_COLOR,
+        timestamp=datetime.now(timezone.utc),
+    )
+    embed.add_field(name="Карта",        value=f"**{snap['map']}**",              inline=True)
+    embed.add_field(name="Режим",        value=snap["exps"],                      inline=True)
+    embed.add_field(name="Свет",         value=snap["lighting"],                  inline=True)
+    embed.add_field(name="Игроков",      value=str(snap["players"]),              inline=True)
+    embed.add_field(name="Длительность", value=_format_duration(snap["matchSeconds"]), inline=True)
+    embed.add_field(name="Победитель",   value=f"**{winner}**",                   inline=True)
+    embed.add_field(name="Счёт фракций", value="\n".join(lines) or "—",           inline=False)
+    embed.set_footer(text="Итоги матча")
+    return embed
+
+
 # ─────────────────────────────────────────────
 #  Cog
 # ─────────────────────────────────────────────
@@ -268,6 +325,7 @@ class ServerMonitor(commands.Cog):
         self._online: Optional[bool] = None   # None = ещё не проверяли
         self._last_data: Optional[dict] = None
         self._status_message_id: Optional[int] = None
+        self._prev_match: Optional[dict] = None   # снимок последнего опроса для итогов матча
 
     # ── Жизненный цикл ───────────────────────────────────────────────────────
 
@@ -303,8 +361,36 @@ class ServerMonitor(commands.Cog):
         self._online    = is_online
         self._last_data = data
 
+        # Итоги матча: смена карты/режима или сброс таймера = предыдущий матч закончился
+        if data is not None:
+            snap = match_snapshot(data)
+            prev = self._prev_match
+            if prev and self._match_ended(prev, snap):
+                await self._send_match_summary(prev)
+            self._prev_match = snap
+
         await self._update_status_message(data)
         await self._update_bot_status(data)
+
+    @staticmethod
+    def _match_ended(prev: dict, cur: dict) -> bool:
+        if prev["matchSeconds"] < 60:   # шум и короткие разогревы не считаем
+            return False
+        return (
+            prev["map"] != cur["map"]
+            or prev["exps"] != cur["exps"]
+            or cur["matchSeconds"] < prev["matchSeconds"]
+        )
+
+    async def _send_match_summary(self, snap: dict):
+        ch_id   = self.ALERT_CHANNEL_ID or self.STATUS_CHANNEL_ID
+        channel = self.bot.get_channel(ch_id)
+        if channel is None:
+            return
+        try:
+            await channel.send(embed=build_match_summary_embed(snap))
+        except discord.HTTPException as e:
+            log.error("[%s] Не удалось отправить итоги матча: %s", self.SERVER_NAME, e)
 
     @poll_loop.before_loop
     async def before_poll(self):
