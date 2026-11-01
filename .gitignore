@@ -1,0 +1,13 @@
+# env-файлы с секретами — никогда в git
+.env.bot1
+.env.bot2
+.env.bot3
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+
+# Docker
+*.log

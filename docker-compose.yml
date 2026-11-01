@@ -1,0 +1,35 @@
+services:
+
+  wardogs-bot-1:
+    build: ./bot
+    image: wardogs-monitor:latest
+    container_name: wardogs-bot-1
+    restart: unless-stopped
+    env_file: .env.bot1
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  wardogs-bot-2:
+    image: wardogs-monitor:latest
+    container_name: wardogs-bot-2
+    restart: unless-stopped
+    env_file: .env.bot2
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  wardogs-bot-3:
+    image: wardogs-monitor:latest
+    container_name: wardogs-bot-3
+    restart: unless-stopped
+    env_file: .env.bot3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
