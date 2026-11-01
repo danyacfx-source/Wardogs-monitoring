@@ -5,6 +5,7 @@ WARDOGS Server Monitor Cog
 """
 
 import asyncio
+import os
 import aiohttp
 import discord
 from discord.ext import commands, tasks
@@ -109,9 +110,34 @@ MAP_INFO: dict[str, dict] = {
     },
 }
 
-# Ссылки на картинки карт (баннер в эмбеде). Пока пусто — картинка не выводится.
-# Пример: "Zestafona": "https://example.com/zestafona.png"
-MAP_IMAGE_URLS: dict[str, str] = {}
+# Баннеры карт лежат в assets/maps/ рядом с репозиторием и прикрепляются к сообщению.
+ASSETS_MAPS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "maps")
+
+MAP_IMAGE_FILES: dict[str, str] = {
+    "Bakurani":   "bakurani.png",
+    "Ozeti":      "ozeti.png",
+    "Zestafona":  "zestafona.png",
+    "Jutari":     "jutari.png",
+    "Saburtulo":  "saburtulo.png",
+}
+
+
+def map_image_name(map_id: Optional[str]) -> Optional[str]:
+    """Имя файла баннера для карты, если он существует на диске."""
+    if not map_id:
+        return None
+    fname = MAP_IMAGE_FILES.get(map_id)
+    if fname and os.path.exists(os.path.join(ASSETS_MAPS_DIR, fname)):
+        return fname
+    return None
+
+
+def make_map_file(map_id: Optional[str]) -> Optional[discord.File]:
+    """Свежий discord.File на каждый вызов (файл после отправки закрывается)."""
+    fname = map_image_name(map_id)
+    if fname is None:
+        return None
+    return discord.File(os.path.join(ASSETS_MAPS_DIR, fname), filename=fname)
 
 
 def get_map_info(map_id: str) -> dict:
@@ -187,9 +213,9 @@ def build_status_embed(server_name: str, data: Optional[dict]) -> discord.Embed:
     embed.add_field(name="Счёт фракций", value=faction_str,      inline=False)
     embed.add_field(name="Ротация",      value=rotation_text,    inline=False)
 
-    image_url = MAP_IMAGE_URLS.get(map_)
-    if image_url:
-        embed.set_image(url=image_url)
+    fname = map_image_name(map_)
+    if fname:
+        embed.set_image(url=f"attachment://{fname}")
 
     embed.set_footer(text="Автосводка")
     return embed
@@ -310,17 +336,20 @@ class ServerMonitor(commands.Cog):
             return
 
         embed = build_status_embed(self.SERVER_NAME, data)
+        file  = make_map_file(data.get("map") if data else None)
+        files = [file] if file else []
 
         if self._status_message_id:
             try:
                 msg = await channel.fetch_message(self._status_message_id)
-                await msg.edit(embed=embed)
+                # attachments=[] снимает старый баннер, если карта сменилась
+                await msg.edit(embed=embed, attachments=files)
                 return
             except (discord.NotFound, discord.HTTPException):
                 self._status_message_id = None
 
         try:
-            msg = await channel.send(embed=embed)
+            msg = await channel.send(embed=embed, files=files)
             self._status_message_id = msg.id
         except discord.HTTPException as e:
             log.error("[%s] Не удалось отправить панель: %s", self.SERVER_NAME, e)
@@ -345,7 +374,8 @@ class ServerMonitor(commands.Cog):
         await interaction.response.defer()
         data  = await self._client.full_info()
         embed = build_status_embed(self.SERVER_NAME, data)
-        await interaction.followup.send(embed=embed)
+        file  = make_map_file(data.get("map") if data else None)
+        await interaction.followup.send(embed=embed, files=[file] if file else [])
 
     @app_commands.command(name="players", description="Список игроков на сервере")
     async def cmd_players(self, interaction: discord.Interaction):
