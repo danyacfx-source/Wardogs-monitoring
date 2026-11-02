@@ -171,7 +171,7 @@ def _faction_bar(factions: list[dict], max_score: int) -> str:
     return "\n".join(parts)
 
 
-def build_status_embed(server_name: str, data: Optional[dict]) -> discord.Embed:
+def build_status_embed(server_name: str, data: Optional[dict], join_id: Optional[str] = None) -> discord.Embed:
     """Публичная панель. Без IP, порта, пароля и списка игроков."""
     now = datetime.now(timezone.utc)
 
@@ -212,6 +212,9 @@ def build_status_embed(server_name: str, data: Optional[dict]) -> discord.Embed:
     embed.add_field(name="Режим",        value=exps,             inline=False)
     embed.add_field(name="Счёт фракций", value=faction_str,      inline=False)
     embed.add_field(name="Ротация",      value=rotation_text,    inline=False)
+
+    if join_id:
+        embed.add_field(name="ID подключения", value=f"```{join_id}```", inline=False)
 
     fname = map_image_name(map_)
     if fname:
@@ -316,6 +319,7 @@ class ServerMonitor(commands.Cog):
     ALERT_CHANNEL_ID  = 987654321098765432   # канал для уведомлений (или None)
 
     POLL_INTERVAL     = 30   # секунд между опросами
+    JOIN_SERVER_ID    = ""   # ID сервера из Community Servers, показывается в панели
     # ─────────────────────────────────────────────────────────────────────────
 
     def __init__(self, bot: commands.Bot):
@@ -427,7 +431,7 @@ class ServerMonitor(commands.Cog):
             self._panel_searched = True
             self._status_message_id = await self._find_existing_panel(channel)
 
-        embed = build_status_embed(self.SERVER_NAME, data)
+        embed = build_status_embed(self.SERVER_NAME, data, self.JOIN_SERVER_ID)
         file  = make_map_file(data.get("map") if data else None)
         files = [file] if file else []
 
@@ -479,7 +483,7 @@ class ServerMonitor(commands.Cog):
     async def cmd_status(self, interaction: discord.Interaction):
         await interaction.response.defer()
         data  = await self._client.full_info()
-        embed = build_status_embed(self.SERVER_NAME, data)
+        embed = build_status_embed(self.SERVER_NAME, data, self.JOIN_SERVER_ID)
         file  = make_map_file(data.get("map") if data else None)
         await interaction.followup.send(embed=embed, files=[file] if file else [])
 

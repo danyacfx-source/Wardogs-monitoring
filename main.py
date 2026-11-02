@@ -42,6 +42,7 @@ SERVER_PASSWORD   = require_env("SERVER_PASSWORD")
 STATUS_CHANNEL_ID = int(require_env("STATUS_CHANNEL_ID"))
 ALERT_CHANNEL_ID  = int(os.getenv("ALERT_CHANNEL_ID", "0")) or None
 POLL_INTERVAL     = int(os.getenv("POLL_INTERVAL", "30"))
+JOIN_SERVER_ID    = os.getenv("JOIN_SERVER_ID", "").strip()
 
 
 # ── Конфигурация кога через env ──────────────────────────────────────────────
@@ -54,6 +55,7 @@ class EnvServerMonitor(ServerMonitor):
     STATUS_CHANNEL_ID = globals()["STATUS_CHANNEL_ID"]
     ALERT_CHANNEL_ID  = globals()["ALERT_CHANNEL_ID"]
     POLL_INTERVAL     = globals()["POLL_INTERVAL"]
+    JOIN_SERVER_ID    = globals()["JOIN_SERVER_ID"]
 
 
 # ── Бот ──────────────────────────────────────────────────────────────────────
